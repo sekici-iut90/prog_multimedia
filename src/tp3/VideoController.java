@@ -17,127 +17,122 @@ import org.opencv.videoio.Videoio;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.paint.Color;
 import javafx.scene.Node;
 
 public class VideoController {
 
-    private final ImageView viewOriginal = new ImageView();
-    private final ImageView viewProcessed = new ImageView();
-
-    private final Button encryptButton = new Button("Chiffrer");
-    private final Button decryptButton = new Button("Déchiffrer");
+    private final ImageView viewLeft = new ImageView();
+    private final ImageView viewRight = new ImageView();
     private final Label keyDisplay = new Label("Clé: N/A");
 
     private ScheduledExecutorService timer;
     private VideoCapture inputCap = new VideoCapture();
     private VideoWriter outputWriter = new VideoWriter();
 
-    private LineCipher cipher;
+    private MelangeDemelange cipher;
 
     private boolean isProcessing = false;
-    private boolean modeEncrypt = true;
+    private boolean isEncryptMode = true; // True pour Chiffrement, False pour Déchiffrement
 
     private String inputPath;
     private String outputPath;
-    private String mode;
+
+    // Labels pour les titres des deux vidéos (mis à jour dans setup)
+    private final Label titleLeft = new Label("Vidéo Gauche");
+    private final Label titleRight = new Label("Vidéo Droite");
 
     // ---------------------------------------------------------
     //  UI
     // ---------------------------------------------------------
     public Node createRoot() {
 
-        viewOriginal.setFitHeight(600);
-        viewOriginal.setFitWidth(550);
-        viewOriginal.setPreserveRatio(true);
-        viewProcessed.setFitHeight(600);
-        viewProcessed.setFitWidth(550);
-        viewProcessed.setPreserveRatio(true);
+        // Styles des ImageView
+        viewLeft.setFitHeight(450);
+        viewLeft.setFitWidth(550);
+        viewLeft.setPreserveRatio(true);
+        viewLeft.setSmooth(true);
+        viewLeft.setStyle("-fx-border-color: #0077b6; -fx-border-width: 4; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 15, 0, 0, 0);");
 
-        encryptButton.setOnAction(e -> startProcess(true));
-        decryptButton.setOnAction(e -> startProcess(false));
+        viewRight.setFitHeight(450);
+        viewRight.setFitWidth(550);
+        viewRight.setPreserveRatio(true);
+        viewRight.setSmooth(true);
+        viewRight.setStyle("-fx-border-color: #0077b6; -fx-border-width: 4; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 15, 0, 0, 0);");
 
-        Label titleOriginal = new Label("Vidéo Originale");
-        titleOriginal.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
-        Label titleProcessed = new Label("Vidéo Traitée");
-        titleProcessed.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+        // Styles des titres et de la clé
+        titleLeft.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #023e8a;");
+        titleRight.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #023e8a;");
+        keyDisplay.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: white;");
 
-        VBox boxOriginal = new VBox(10, titleOriginal, viewOriginal);
-        boxOriginal.setAlignment(Pos.CENTER);
-        VBox boxProcessed = new VBox(10, titleProcessed, viewProcessed);
-        boxProcessed.setAlignment(Pos.CENTER);
+        VBox boxLeft = new VBox(10, titleLeft, viewLeft);
+        boxLeft.setAlignment(Pos.TOP_CENTER);
+        VBox boxRight = new VBox(10, titleRight, viewRight);
+        boxRight.setAlignment(Pos.TOP_CENTER);
 
-        HBox videoBox = new HBox(20, boxOriginal, boxProcessed);
+        HBox videoBox = new HBox(30, boxLeft, boxRight);
         videoBox.setAlignment(Pos.CENTER);
 
-        HBox buttonBar = new HBox(30, encryptButton, decryptButton, keyDisplay);
-        buttonBar.setAlignment(Pos.CENTER);
+        // Barre d'information pour la clé
+        HBox infoBar = new HBox(20, keyDisplay);
+        infoBar.setAlignment(Pos.CENTER);
+        infoBar.setPadding(new Insets(10, 20, 10, 20));
+        infoBar.setBackground(new Background(new BackgroundFill(Color.web("#0096c7"), new CornerRadii(10), Insets.EMPTY)));
 
-        VBox root = new VBox(20, videoBox, buttonBar);
+        VBox root = new VBox(30, infoBar, videoBox);
         root.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(20));
-        root.setStyle("-fx-background-color: #F5F5F5;");
-
-        startPreview();
+        root.setBackground(new Background(new BackgroundFill(Color.web("#F0F8FF"), CornerRadii.EMPTY, Insets.EMPTY)));
 
         return root;
     }
 
     // ---------------------------------------------------------
-    //  SETUP
+    //  SETUP & DÉMARRAGE
     // ---------------------------------------------------------
     public void setup(String inputPath, String outputPath, String key, String mode) {
         this.inputPath = inputPath;
         this.outputPath = outputPath;
-        this.mode = mode;
-        this.cipher = new LineCipher(key);
+        this.cipher = new MelangeDemelange(key);
         this.keyDisplay.setText("Clé: " + key);
-    }
 
-    // ---------------------------------------------------------
-    //  PREVIEW
-    // ---------------------------------------------------------
-    private void startPreview() {
-        stopResources();
-
-        if (!inputCap.open(inputPath)) {
-            System.err.println("Impossible d'ouvrir la vidéo (preview): " + inputPath);
+        if (mode.equalsIgnoreCase("CHIFFRER")) {
+            isEncryptMode = true;
+            titleLeft.setText("Vidéo d'origine (Non Chiffrée)");
+            titleRight.setText("Vidéo Chiffrée (Mélangée)");
+        } else if (mode.equalsIgnoreCase("DECHIFFRER")) {
+            isEncryptMode = false;
+            titleLeft.setText("Vidéo Chiffrée (Mélangée)");
+            titleRight.setText("Vidéo Déchiffrée (Originale)");
+        } else {
+            System.err.println("Mode non reconnu. Utilisez 'CHIFFRER' ou 'DECHIFFRER'.");
+            Platform.exit();
             return;
         }
 
-        timer = Executors.newSingleThreadScheduledExecutor();
-        timer.scheduleAtFixedRate(() -> {
-            Mat frame = new Mat();
-            inputCap.read(frame);
-
-            if (frame.empty()) {
-                inputCap.set(Videoio.CAP_PROP_POS_FRAMES, 0);
-                return;
-            }
-
-            updateImageView(viewOriginal, mat2Image(frame));
-
-        }, 0, 33, TimeUnit.MILLISECONDS);
+        // Démarre le traitement immédiatement après le setup
+        startProcess();
     }
 
     // ---------------------------------------------------------
-    //  TRAITEMENT
+    //  TRAITEMENT PRINCIPAL
     // ---------------------------------------------------------
-    private void startProcess(boolean encrypt) {
+    private void startProcess() {
         if (isProcessing) return;
 
         isProcessing = true;
-        modeEncrypt = encrypt;
-
-        stopResources();
+        stopResources(); // Juste pour s'assurer que tout est propre
 
         if (!initializeVideoResources()) {
-            System.err.println("Impossible d'initialiser la vidéo.");
+            System.err.println("Impossible d'initialiser les ressources vidéo.");
             isProcessing = false;
             return;
         }
@@ -148,7 +143,7 @@ public class VideoController {
 
     private boolean initializeVideoResources() {
         if (!inputCap.open(inputPath)) {
-            System.err.println("Impossible d'ouvrir la vidéo: " + inputPath);
+            System.err.println("Impossible d'ouvrir la vidéo d'entrée: " + inputPath);
             return false;
         }
 
@@ -160,7 +155,7 @@ public class VideoController {
         int height = (int) inputCap.get(Videoio.CAP_PROP_FRAME_HEIGHT);
 
         if (!outputWriter.open(outputPath, fourcc, fps, new Size(width, height), true)) {
-            System.err.println("Impossible d'ouvrir la sortie: " + outputPath);
+            System.err.println("Impossible d'ouvrir le fichier de sortie: " + outputPath);
             return false;
         }
 
@@ -168,20 +163,45 @@ public class VideoController {
     }
 
     private void processFrame() {
-        Mat frame = new Mat();
-        inputCap.read(frame);
+        Mat inputFrame = new Mat();
+        inputCap.read(inputFrame);
 
-        if (frame.empty()) {
-            inputCap.set(Videoio.CAP_PROP_POS_FRAMES, 0);
-            inputCap.read(frame);
+        if (inputFrame.empty()) {
+            // Fin de la vidéo, on boucle ou on arrête
+            if (isProcessing) {
+                inputCap.set(Videoio.CAP_PROP_POS_FRAMES, 0); // Boucle
+                inputCap.read(inputFrame);
+            } else {
+                return; // Arrêt
+            }
         }
-        if (frame.empty()) return;
+        if (inputFrame.empty()) return;
 
-        Mat processed = modeEncrypt ? cipher.encrypt(frame) : cipher.decrypt(frame);
+        Mat outputFrame;
 
-        outputWriter.write(processed);
+        // 1. Applique le chiffrement/déchiffrement
+        if (isEncryptMode) {
+            outputFrame = cipher.encrypt(inputFrame);
+        } else {
+            outputFrame = cipher.decrypt(inputFrame);
+        }
 
-        updateImageView(viewProcessed, mat2Image(processed));
+        // 2. Enregistre le résultat du traitement
+        outputWriter.write(outputFrame);
+
+        // 3. Met à jour les vues pour l'affichage côte à côte
+        Platform.runLater(() -> {
+            if (isEncryptMode) {
+                // Mode CHIFFRER: Gauche=Originale (inputFrame), Droite=Chiffrée (outputFrame)
+                updateImageView(viewLeft, mat2Image(inputFrame));
+                updateImageView(viewRight, mat2Image(outputFrame));
+            } else {
+                // Mode DECHIFFRER: Gauche=Chiffrée (inputFrame), Droite=Déchiffrée (outputFrame)
+                updateImageView(viewLeft, mat2Image(inputFrame));
+                updateImageView(viewRight, mat2Image(outputFrame));
+            }
+        });
+
     }
 
     // ---------------------------------------------------------
@@ -195,7 +215,7 @@ public class VideoController {
     }
 
     // ---------------------------------------------------------
-    //  UTILITAIRES
+    //  UTILITAIRES DE CONVERSION
     // ---------------------------------------------------------
     private void updateImageView(ImageView view, Image image) {
         onFXThread(view.imageProperty(), image);
@@ -220,6 +240,7 @@ public class VideoController {
         byte[] source = new byte[width * height * channels];
         original.get(0, 0, source);
 
+        // Assurez-vous que le format de l'image est correct (BGR pour OpenCV couleur)
         BufferedImage image = (channels > 1)
                 ? new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR)
                 : new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
